@@ -1,0 +1,175 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>経過タイマー</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Helvetica Neue", "Hiragino Sans", "Yu Gothic", sans-serif;
+    margin: 0; padding: 28px 16px 60px; min-height: 100vh; color: #e8ecf5;
+    background: radial-gradient(circle at 20% 0%, #2b3a67 0%, #141a2e 45%, #0b0f1c 100%);
+    background-attachment: fixed;
+  }
+  .wrap { max-width: 580px; margin: 0 auto; }
+  h1 { font-size: 1.3rem; font-weight: 600; letter-spacing: .15em; text-align: center; margin: 0 0 24px; color: #cfd8ff; }
+  .add { display: flex; gap: 8px; margin-bottom: 24px; }
+  .add input {
+    flex: 1; padding: 12px 14px; font-size: 1rem; color: #fff;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
+    border-radius: 12px; outline: none;
+  }
+  .add input::placeholder { color: #8d97b8; }
+  .add input:focus { border-color: #8aa4ff; }
+  button {
+    padding: 11px 16px; border: none; border-radius: 12px; cursor: pointer;
+    font-size: .9rem; color: #fff; background: linear-gradient(135deg, #6d8bff, #9a6dff);
+    transition: transform .1s, opacity .2s;
+  }
+  button:hover { opacity: .9; }
+  button:active { transform: scale(.96); }
+  button.ghost { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.15); }
+  button.del { background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.4); color: #ffb4b4; }
+  .card {
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-radius: 20px; padding: 20px; margin-bottom: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.3);
+  }
+  .name { font-weight: 600; font-size: 1.1rem; color: #fff; }
+  .since { color: #8d97b8; font-size: .78rem; margin: 4px 0 14px; }
+  .time { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 16px; }
+  .unit { display: flex; align-items: baseline; gap: 3px; }
+  .num { font-size: 2rem; font-weight: 300; font-variant-numeric: tabular-nums; color: #fff; }
+  .lbl { font-size: .75rem; color: #9fb0ff; }
+  .idle { font-size: 1.1rem; color: #8d97b8; margin: 12px 0 16px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  .edit {
+    display: none; margin-top: 14px; padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,.12);
+    gap: 8px; flex-wrap: wrap; align-items: center;
+  }
+  .edit.open { display: flex; }
+  .edit input[type=datetime-local] {
+    padding: 9px 10px; font-size: .95rem; color: #fff; color-scheme: dark;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2);
+    border-radius: 10px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ELAPSED TIMER</h1>
+  <div class="add">
+    <input id="name" placeholder="例：禁煙、禁酒、ダイエット">
+    <button onclick="addTimer()">追加</button>
+  </div>
+  <div id="list"></div>
+</div>
+
+<script>
+const KEY = "elapsedTimers";
+let timers = JSON.parse(localStorage.getItem(KEY) || "[]");
+
+function save() { localStorage.setItem(KEY, JSON.stringify(timers)); }
+
+function addTimer() {
+  const input = document.getElementById("name");
+  const name = input.value.trim() || "タイマー";
+  timers.push({ id: Date.now(), name: name, start: null });
+  input.value = "";
+  save(); render();
+}
+
+function startTimer(id) {
+  timers.find(x => x.id === id).start = Date.now();
+  save(); render();
+}
+
+function resetTimer(id) {
+  if (!confirm("リセットして最初からにしますか？")) return;
+  timers.find(x => x.id === id).start = null;
+  save(); render();
+}
+
+function deleteTimer(id) {
+  if (!confirm("このタイマーを削除しますか？")) return;
+  timers = timers.filter(x => x.id !== id);
+  save(); render();
+}
+
+function toggleEdit(id) {
+  document.getElementById("e" + id).classList.toggle("open");
+}
+
+function toLocalInput(ms) {
+  const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000);
+  return d.toISOString().slice(0, 16);
+}
+
+function saveStart(id) {
+  const v = document.getElementById("d" + id).value;
+  if (!v) { alert("日時を入力してください"); return; }
+  const ms = new Date(v).getTime();
+  if (ms > Date.now()) { alert("未来の日時は指定できません"); return; }
+  timers.find(x => x.id === id).start = ms;
+  save(); render();
+}
+
+function parts(ms) {
+  let s = Math.max(0, Math.floor(ms / 1000));
+  const years = Math.floor(s / 31536000); s %= 31536000;
+  const days = Math.floor(s / 86400); s %= 86400;
+  const hours = Math.floor(s / 3600); s %= 3600;
+  const mins = Math.floor(s / 60); s %= 60;
+  return [[years, "年"], [days, "日"], [hours, "時間"], [mins, "分"], [s, "秒"]];
+}
+
+function timeHtml(ms) {
+  return parts(ms).map(p =>
+    `<span class="unit"><span class="num">${p[0]}</span><span class="lbl">${p[1]}</span></span>`
+  ).join("");
+}
+
+function esc(str) {
+  return str.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function render() {
+  const list = document.getElementById("list");
+  const open = new Set([...document.querySelectorAll(".edit.open")].map(e => e.id));
+  list.innerHTML = timers.map(t => `
+    <div class="card">
+      <div class="name">${esc(t.name)}</div>
+      ${t.start
+        ? `<div class="since">開始：${new Date(t.start).toLocaleString("ja-JP")}</div>
+           <div class="time" id="t${t.id}"></div>`
+        : `<div class="idle">未開始</div>`}
+      <div class="btns">
+        ${t.start ? "" : `<button onclick="startTimer(${t.id})">今すぐスタート</button>`}
+        <button class="ghost" onclick="toggleEdit(${t.id})">開始日時を編集</button>
+        ${t.start ? `<button class="ghost" onclick="resetTimer(${t.id})">リセット</button>` : ""}
+        <button class="del" onclick="deleteTimer(${t.id})">削除</button>
+      </div>
+      <div class="edit ${open.has("e" + t.id) ? "open" : ""}" id="e${t.id}">
+        <input type="datetime-local" id="d${t.id}" value="${toLocalInput(t.start || Date.now())}">
+        <button onclick="saveStart(${t.id})">保存</button>
+      </div>
+    </div>`).join("");
+  tick();
+}
+
+function tick() {
+  timers.forEach(t => {
+    if (!t.start) return;
+    const el = document.getElementById("t" + t.id);
+    if (el) el.innerHTML = timeHtml(Date.now() - t.start);
+  });
+}
+
+render();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>
